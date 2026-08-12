@@ -35,3 +35,11 @@ Below is a detailed benchmark comparison across standard evaluation datasets (me
 | **NAFNet** | Activation-Free | **40.30 / 0.962** | **40.27 / 0.957** | **SOTA Efficiency**: Non-linear activation-free block. |
 
 ---
+
+## Usage Instructions
+
+This project features a modular factory-registry framework. You can train different models or introduce a new architecture without altering the core training infrastructure.
+
+### Train Baseline Model
+```bash
+python train.py --model baseline_cnn --train_dir ./data/train --val_dir ./data/val --epochs 10
