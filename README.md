@@ -43,11 +43,12 @@ This project features a modular factory-registry framework. You can train differ
 ### Train Baseline Model
 ```bash
 python train.py --model baseline_cnn --train_dir ./data/train --val_dir ./data/val --epochs 10
-
+```
 ### Train DnCNN Model
 ```bash
 python train.py --model dncnn --train_dir ./data/train --val_dir ./data/val --epochs 20
-
+```
 ### Run Inference
 ```bash
 python infer.py --model dncnn --weights best_dncnn.pth --input_image noisy_sample.png --output_image clean_sample.png
+```
