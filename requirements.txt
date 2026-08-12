@@ -1,4 +1,4 @@
-t# --- Index URL for Intel XPU PyTorch Wheels ---
+# --- Index URL for Intel XPU PyTorch Wheels ---
 --extra-index-url https://download.pytorch.org/whl/xpu
 
 # --- Core Deep Learning Framework ---

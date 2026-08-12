@@ -40,13 +40,11 @@ Below is a detailed benchmark comparison across standard evaluation datasets (me
 
 This repository features automatic hardware discovery supporting **Intel XPU**, **NVIDIA CUDA**, and **CPU** backends seamlessly.
 
-### Hardware Detection Logic
-When `--device auto` (default) is set, PyTorch checks hardware in the following priority order:
-$$\text{Intel XPU} \longrightarrow \text{NVIDIA CUDA} \longrightarrow \text{CPU}$$
-
 ### Train DnCNN Model on Intel XPU
 ```bash
-python train.py --model dncnn --train_dir ./data/train --val_dir ./data/val --epochs 20 --device xpu
+python train.py --config configs/config.yaml
+python train.py --config configs/config.yaml --device xpu
+python train.py --config configs/config.yaml --epochs 2
 ```
 
 ### Run Inference
