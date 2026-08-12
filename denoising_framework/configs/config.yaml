@@ -1,0 +1,29 @@
+# configs/config.yaml
+
+experiment:
+  name: "dncnn_awgn_sigma25"
+  output_dir: "./checkpoints"
+
+model:
+  name: "dncnn"           # Options: baseline_cnn, dncnn, restormer, etc.
+  params:
+    in_channels: 3
+    out_channels: 3
+    num_layers: 17
+    num_features: 64
+
+dataset:
+  train_dir: "./data/train"
+  val_dir: "./data/val"
+  patch_size: 128
+  sigma: 25.0             # Additive White Gaussian Noise std (0-255)
+
+training:
+  epochs: 20
+  batch_size: 16
+  learning_rate: 0.001
+  loss: "L1"              # Options: L1, MSE
+  num_workers: 2
+
+hardware:
+  device: "auto"          # Options: auto, xpu, cuda, cpu

@@ -38,17 +38,20 @@ Below is a detailed benchmark comparison across standard evaluation datasets (me
 
 ## Usage Instructions
 
-This project features a modular factory-registry framework. You can train different models or introduce a new architecture without altering the core training infrastructure.
+This repository features automatic hardware discovery supporting **Intel XPU**, **NVIDIA CUDA**, and **CPU** backends seamlessly.
 
-### Train Baseline Model
+### Hardware Detection Logic
+When `--device auto` (default) is set, PyTorch checks hardware in the following priority order:
+$$\text{Intel XPU} \longrightarrow \text{NVIDIA CUDA} \longrightarrow \text{CPU}$$
+
+### Train DnCNN Model on Intel XPU
 ```bash
-python train.py --model baseline_cnn --train_dir ./data/train --val_dir ./data/val --epochs 10
+python train.py --model dncnn --train_dir ./data/train --val_dir ./data/val --epochs 20 --device xpu
 ```
-### Train DnCNN Model
-```bash
-python train.py --model dncnn --train_dir ./data/train --val_dir ./data/val --epochs 20
-```
+
 ### Run Inference
 ```bash
-python infer.py --model dncnn --weights best_dncnn.pth --input_image noisy_sample.png --output_image clean_sample.png
+python infer.py --model dncnn --weights checkpoints/best_dncnn.pth --input_image noisy_sample.png --output_image clean_sample.png
+python infer.py --model dncnn --weights checkpoints/best_dncnn.pth --input_image noisy_sample.png --output_image clean_sample.png --device xpu
+python infer.py --model dncnn --weights checkpoints/best_dncnn.pth --input_image noisy_sample.png --output_image clean_sample.png --device cpu
 ```
