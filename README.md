@@ -1,4 +1,4 @@
-# Deep Learning Image Denoising Portfolio
+# Deep Learning Image Denoising
 
 A structured exploration and benchmark implementation of Deep Learning architectures for **Image Denoising**, ranging from classical feedforward CNN baselines to state-of-the-art Vision Transformers and activation-free architectures. 
 
@@ -35,10 +35,3 @@ Below is a detailed benchmark comparison across standard evaluation datasets (me
 | **NAFNet** | Activation-Free | **40.30 / 0.962** | **40.27 / 0.957** | **SOTA Efficiency**: Non-linear activation-free block. |
 
 ---
-
-## Architectural Progression in This Repo
-
-1. **Phase 1: Baseline CNNs** — 17-layer feedforward DnCNN with residual learning ($N = X_{noisy} - Y_{clean}$).
-2. **Phase 2: Multi-Scale Context** — Residual U-Net with skip connections and perceptual loss.
-3. **Phase 3: Transformers & SOTA** — Restormer and NAFNet block implementations for real-world ISP pipelines.
-4. **Phase 4: Sensor RAW Domain** — Direct 10/12-bit unpacked RAW image processing prior to demosaicing.
