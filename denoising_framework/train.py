@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from models import MODEL_REGISTRY
 from dataset import DenoisingDataset
 from engine import train_one_epoch, evaluate
-from utils.config import load_config
+from utils.config import load_config, Config
 
 def get_device(target_device="auto"):
     if target_device != "auto":
