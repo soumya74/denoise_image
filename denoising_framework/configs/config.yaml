@@ -23,7 +23,7 @@ training:
   epochs: 20
   batch_size: 16
   learning_rate: 0.001
-  loss: "L1"              # Options: L1, MSE
+  loss: "MSE"              # Options: L1, MSE
   num_workers: 2
 
 hardware:

@@ -97,8 +97,16 @@ def main():
     torch.save(model.state_dict(), save_path)
     print(f"--> [Checkpoint] Saved final model weights -> {save_path}")
 
-    # --- Plotting Curves ---
-    plt.figure(figsize=(14, 5))
+# --- Plotting Curves ---
+    # Increased height slightly to accommodate the main title
+    plt.figure(figsize=(14, 6)) 
+
+    # Add a main centered title with the model and loss details
+    plt.suptitle(
+        f"Model Architecture: {cfg.model.name} | Loss Function: {cfg.training.loss}", 
+        fontsize=14, 
+        fontweight='bold'
+    )
 
     # Plot 1: Losses
     plt.subplot(1, 2, 1)
@@ -119,7 +127,13 @@ def main():
     plt.grid(True)
     plt.legend()
 
-    plot_path = os.path.join(cfg.experiment.output_dir, "training_curves.png")
+    # Adjust layout so the plots do not overlap with the super title
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+    # Dynamically name the output file based on the config
+    plot_filename = f"training_curves_{cfg.model.name}_{cfg.training.loss}.png"
+    plot_path = os.path.join(cfg.experiment.output_dir, plot_filename)
+    
     plt.savefig(plot_path)
     print(f"--> [Plot] Saved training curves to -> {plot_path}")
 
