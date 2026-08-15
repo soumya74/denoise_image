@@ -31,8 +31,3 @@ python infer.py --model dncnn --weights checkpoints/best_dncnn.pth --input_image
 *   **Hyperparameters:** 20 Epochs, Batch Size 16
 *   **Observation:** When evaluating the direct-mapping autoencoder, using an L1 Loss penalty resulted in noticeable color desaturation in the denoised image outputs. Switching the loss function to L2 (MSE) loss mitigated the severity of this regression-to-the-mean issue, yielding better color preservation in the final RGB predictions.
 
-#### Training Curves: L1 Loss
-![Training Curves - L1 Loss](training_curves_L1.png)
-
-#### Training Curves: L2 (MSE) Loss
-![Training Curves - MSE Loss](training_curves_MSE.png)
