@@ -49,7 +49,7 @@ python train.py --config configs/config.yaml --epochs 2
 
 ### Run Inference
 ```bash
-python infer.py --model dncnn --weights checkpoints/best_dncnn.pth --input_image noisy_sample.png --output_image clean_sample.png
+python infer.py --model baseline_cnn --weights checkpoints/final_baseline_cnn.pth --input_image ../../SD68-dataset/noisy5/val/noisy/0001.png --output_image test_result_0001.png
 python infer.py --model dncnn --weights checkpoints/best_dncnn.pth --input_image noisy_sample.png --output_image clean_sample.png --device xpu
 python infer.py --model dncnn --weights checkpoints/best_dncnn.pth --input_image noisy_sample.png --output_image clean_sample.png --device cpu
 ```

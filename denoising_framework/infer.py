@@ -1,4 +1,5 @@
 import argparse
+import os
 import torch
 import torchvision.transforms as T
 from PIL import Image
@@ -28,6 +29,21 @@ def infer(args):
     img = Image.open(args.input_image).convert("RGB")
     transform = T.ToTensor()
     input_tensor = transform(img).unsqueeze(0).to(device)
+
+    # ==========================================
+    # NEW LOGIC: Dump the exact tensor being fed 
+    # ==========================================
+    # Remove batch dimension and move back to CPU
+    input_dump_tensor = input_tensor.squeeze(0).cpu()
+    input_dump_img = T.ToPILImage()(input_dump_tensor)
+    
+    # Create a filename dynamically (e.g., denoised.png -> denoised_input_fed.png)
+    base_name, ext = os.path.splitext(args.output_image)
+    input_dump_path = f"{base_name}_input_fed{ext}"
+    
+    input_dump_img.save(input_dump_path)
+    print(f"--> Pre-processed input image saved to: {input_dump_path}")
+    # ==========================================
 
     with torch.no_grad():
         output = model(input_tensor)

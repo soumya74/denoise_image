@@ -2,7 +2,9 @@ import argparse
 import os
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
+import matplotlib.pyplot as plt
+
 from models import MODEL_REGISTRY
 from dataset import DenoisingDataset
 from engine import train_one_epoch, evaluate
@@ -30,10 +32,8 @@ def main():
     parser.add_argument("--epochs", type=int, default=None, help="Override training epoch count")
     args = parser.parse_args()
 
-    # Load YAML Configuration
     cfg = load_config(args.config)
 
-    # CLI Overrides
     device_name = args.device if args.device else cfg.hardware.device
     epochs = args.epochs if args.epochs else cfg.training.epochs
 
@@ -43,22 +43,28 @@ def main():
     print(f"--> [Experiment] Launching: {cfg.experiment.name}")
     print(f"--> [Model] Building '{cfg.model.name}' via Registry...")
 
-    # Pass dynamic model hyper-parameters if present
     model_kwargs = getattr(cfg.model, "params", Config({})).__dict__ if hasattr(cfg.model, "params") else {}
     model = MODEL_REGISTRY.build(cfg.model.name, **model_kwargs).to(device)
 
-    # Data Loading
-    train_dataset = DenoisingDataset(
-        root_dir=cfg.dataset.train_dir, 
-        patch_size=cfg.dataset.patch_size, 
-        sigma=cfg.dataset.sigma, 
-        is_train=True
-    )
-    val_dataset = DenoisingDataset(
-        root_dir=cfg.dataset.val_dir, 
-        sigma=cfg.dataset.sigma, 
-        is_train=False
-    )
+    # --- Dataset Loading & Dynamic Splitting ---
+    # Load dataset twice: one with training augmentations, one without
+    full_train_ds = DenoisingDataset(cfg.dataset.train_dir, patch_size=cfg.dataset.patch_size, is_train=True)
+    full_test_ds = DenoisingDataset(cfg.dataset.train_dir, is_train=False)
+
+    num_items = len(full_train_ds)
+    test_split = getattr(cfg.dataset, "test_split", 0.1)
+    test_size = int(num_items * test_split)
+    train_size = num_items - test_size
+
+    # Generate random indices for the split
+    indices = torch.randperm(num_items).tolist()
+    train_indices, test_indices = indices[:train_size], indices[train_size:]
+
+    # Create subsets
+    train_dataset = Subset(full_train_ds, train_indices)
+    test_dataset = Subset(full_test_ds, test_indices)
+
+    print(f"--> [Data] Total images: {num_items} | Train: {train_size} | Test: {test_size}")
 
     train_loader = DataLoader(
         train_dataset, 
@@ -66,23 +72,56 @@ def main():
         shuffle=True, 
         num_workers=cfg.training.num_workers
     )
-    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     criterion = nn.L1Loss() if cfg.training.loss == "L1" else nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
 
-    best_psnr = 0.0
-    save_path = os.path.join(cfg.experiment.output_dir, f"best_{cfg.model.name}.pth")
+    # --- Metric Tracking ---
+    history_train_loss = []
+    history_test_loss = []
+    history_test_psnr = []
 
     for epoch in range(1, epochs + 1):
-        loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        val_psnr = evaluate(model, val_loader, device)
-        print(f"Epoch [{epoch}/{epochs}] - Loss: {loss:.4f} | Val PSNR: {val_psnr:.2f} dB")
+        train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        test_loss, test_psnr = evaluate(model, test_loader, criterion, device)
+        
+        history_train_loss.append(train_loss)
+        history_test_loss.append(test_loss)
+        history_test_psnr.append(test_psnr)
+        
+        print(f"Epoch [{epoch}/{epochs}] - Train Loss: {train_loss:.4f} | Test Loss: {test_loss:.4f} | Test PSNR: {test_psnr:.2f} dB")
 
-        if val_psnr > best_psnr:
-            best_psnr = val_psnr
-            torch.save(model.state_dict(), save_path)
-            print(f"    [Checkpoint] Saved best weights -> {save_path}")
+    # --- Final Checkpoint Save ---
+    save_path = os.path.join(cfg.experiment.output_dir, f"final_{cfg.model.name}.pth")
+    torch.save(model.state_dict(), save_path)
+    print(f"--> [Checkpoint] Saved final model weights -> {save_path}")
+
+    # --- Plotting Curves ---
+    plt.figure(figsize=(14, 5))
+
+    # Plot 1: Losses
+    plt.subplot(1, 2, 1)
+    plt.plot(range(1, epochs + 1), history_train_loss, label='Train Loss', marker='o')
+    plt.plot(range(1, epochs + 1), history_test_loss, label='Test Loss', marker='s')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.title('Training & Test Loss')
+    plt.grid(True)
+    plt.legend()
+
+    # Plot 2: PSNR
+    plt.subplot(1, 2, 2)
+    plt.plot(range(1, epochs + 1), history_test_psnr, label='Test PSNR', color='green', marker='^')
+    plt.xlabel('Epochs')
+    plt.ylabel('PSNR (dB)')
+    plt.title('Test PSNR Accuracy')
+    plt.grid(True)
+    plt.legend()
+
+    plot_path = os.path.join(cfg.experiment.output_dir, "training_curves.png")
+    plt.savefig(plot_path)
+    print(f"--> [Plot] Saved training curves to -> {plot_path}")
 
 if __name__ == "__main__":
     main()

@@ -17,6 +17,7 @@ dataset:
   val_dir: "../../CBSD68-dataset/noisy5/val"      # Moves up two folders, then into data/val
   patch_size: 128
   sigma: 25.0             # Additive White Gaussian Noise std (0-255)
+  test_split: 0.1   # 10% of training data used for testing
 
 training:
   epochs: 20

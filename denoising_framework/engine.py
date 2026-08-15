@@ -24,15 +24,22 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
     return total_loss / len(dataloader)
 
 @torch.no_grad()
-def evaluate(model, dataloader, device):
+def evaluate(model, dataloader, criterion, device): # Added criterion to arguments
     model.eval()
     total_psnr = 0.0
+    total_loss = 0.0
+    
     for noisy, clean in dataloader:
         noisy, clean = noisy.to(device), clean.to(device)
         output = model(noisy)
-        output = torch.clamp(output, 0.0, 1.0)
         
+        # Calculate test loss
+        loss = criterion(output, clean)
+        total_loss += loss.item()
+        
+        # Calculate test PSNR
+        output = torch.clamp(output, 0.0, 1.0)
         psnr = calculate_psnr(output, clean)
         total_psnr += psnr
         
-    return total_psnr / len(dataloader)
+    return total_loss / len(dataloader), total_psnr / len(dataloader)
