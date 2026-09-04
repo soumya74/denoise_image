@@ -1,0 +1,13 @@
+==== DATASET ====
+Synthetic Dataset
+===================
+
+
+Real World & Sensor Benchmarking Dataset
+==========================================
+Name == Image Type == Noise Distribution == Comments
+------------------------------------------------------
+SIDD == Raw & sRGB ==                    == Real Smartphone sensor across 5 cameras
+ELD  == Raw        ==                    == Ultra High ISO, extreme dark noise
+
+==== METRIC ====

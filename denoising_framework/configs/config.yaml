@@ -1,15 +1,17 @@
 # configs/config.yaml
 
 experiment:
-  name: "baseline_cnn_awgn_sigma25"
-  output_dir: "./checkpoints"
+ # name: "baseline_cnn_awgn_sigma25"
+  name: "dncnn_awgn_sigma5"
+  output_dir: "./checkpoints_dncnn_awgn_sigma5"
 
 model:
-  name: "baseline_cnn"           # Options: baseline_cnn, dncnn, restormer, etc.
+  #name: "baseline_cnn"           # Options: baseline_cnn, dncnn, restormer, etc.
+  name: "dncnn"           # Options: baseline_cnn, dncnn, restormer, etc.
   params:
     in_channels: 3
     out_channels: 3
-    #num_layers: 17
+    num_layers: 17
     num_features: 64
 
 dataset:
