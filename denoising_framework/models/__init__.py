@@ -1,4 +1,5 @@
 import torch.nn as nn
+from .disentangle_net import DisentanglementNetwork
 
 class ModelRegistry:
     def __init__(self):

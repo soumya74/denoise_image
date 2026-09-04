@@ -15,6 +15,11 @@ python train.py --config configs/config.yaml --device xpu
 python train.py --config configs/config.yaml --epochs 2
 ```
 
+### Train Disentangle Network Model on Intel XPU
+```bash
+python train_disentangle.py --config configs/config_disentangle.yaml
+```
+
 ### Run Inference
 ```bash
 python infer.py --model baseline_cnn --weights checkpoints/final_baseline_cnn.pth --input_image ../../SD68-dataset/noisy5/val/noisy/0001.png --output_image test_result_0001.png
