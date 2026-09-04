@@ -1,5 +1,4 @@
-import torch.nn as nn
-from .disentangle_net import DisentanglementNetwork
+# models/__init__.py
 
 class ModelRegistry:
     def __init__(self):
@@ -11,17 +10,15 @@ class ModelRegistry:
             return cls
         return decorator
 
-    def build(self, name, **kwargs) -> nn.Module:
+    def build(self, name, **kwargs):
         name = name.lower()
         if name not in self._models:
-            raise ValueError(f"Model '{name}' not found. Available models: {list(self._models.keys())}")
+            raise KeyError(f"Model '{name}' not found in registry. Available: {list(self._models.keys())}")
         return self._models[name](**kwargs)
 
 MODEL_REGISTRY = ModelRegistry()
 
-# Automatically import all model files in this folder to register them
-from .base_model import BaselineDenoiser
-try:
-    from .dncnn_model import DnCNN
-except ImportError:
-    pass
+# --- Model Imports (Must remain below MODEL_REGISTRY) ---
+from .baseline_cnn import BaselineDenoiser
+from .dncnn_model import DnCNN
+from .disentangle_net import DisentanglementNetwork
