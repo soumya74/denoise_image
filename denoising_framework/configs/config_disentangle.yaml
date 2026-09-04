@@ -27,6 +27,7 @@ loss_weights:
   noise_rec: 1.0       # L_noise-rec
   clean_self: 1.0      # L_clean-self
   content_latent: 0.5  # L_content-latent
+  noise_zero: 1.0      # L_noise-zero (forces z_n^x to 0 for clean images)
 
 hardware:
   device: "auto"

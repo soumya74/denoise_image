@@ -67,7 +67,10 @@ def main():
     epochs = cfg.training.epochs
     for epoch in range(1, epochs + 1):
         model.train()
-        epoch_losses = {"total": 0.0, "clean_rec": 0.0, "noisy_rec": 0.0, "noise_rec": 0.0, "clean_self": 0.0, "latent": 0.0}
+        epoch_losses = {
+            "total": 0.0, "clean_rec": 0.0, "noisy_rec": 0.0, 
+            "noise_rec": 0.0, "clean_self": 0.0, "latent": 0.0, "noise_zero": 0.0
+        }
 
         for noisy, clean in train_loader:
             noisy, clean = noisy.to(device), clean.to(device)
@@ -77,17 +80,34 @@ def main():
             optimizer.zero_grad()
             res = model(noisy_img=noisy, clean_img=clean)
 
-            # --- THE 5 LOSS FUNCTIONS ---
+            # --- THE 6 DISENTANGLEMENT LOSS FUNCTIONS ---
             # 1. Clean Reconstruction Loss: ||x_hat - x||_1
             l_clean_rec = l1_loss(res["x_hat"], clean)
+
             # 2. Noisy Image Reconstruction Loss: ||y_hat - y||_1 where y_hat = x_hat + n_hat
             l_noisy_rec = l1_loss(res["y_hat"], noisy)
+
             # 3. Explicit Noise Reconstruction Loss: ||n_hat - n||_1
             l_noise_rec = l1_loss(res["n_hat"], gt_noise)
+
             # 4. Clean Identity Reconstruction Loss: ||x_hat_clean - x||_1
             l_clean_self = l1_loss(res["x_hat_clean"], clean)
+
             # 5. Latent Content Consistency Loss: ||z_c^y - z_c^x||_1
             l_content_latent = l1_loss(res["z_c_y"], res["z_c_x"])
+
+            # 6. Clean Latent Noise Suppression Loss: ||z_n^x||_1 (Forces 4-D noise latent to zero for clean images)
+            l_noise_zero = torch.mean(torch.abs(res["z_n_x"]))
+
+            # Total Weighted Objective
+            total_loss = (
+                w.clean_rec * l_clean_rec +
+                w.noisy_rec * l_noisy_rec +
+                w.noise_rec * l_noise_rec +
+                w.clean_self * l_clean_self +
+                w.content_latent * l_content_latent +
+                w.noise_zero * l_noise_zero
+            )
 
             total_loss = (
                 w.clean_rec * l_clean_rec +
@@ -106,6 +126,7 @@ def main():
             epoch_losses["noise_rec"] += l_noise_rec.item()
             epoch_losses["clean_self"] += l_clean_self.item()
             epoch_losses["latent"] += l_content_latent.item()
+            epoch_losses["noise_zero"] += l_noise_zero.item()
 
         n_batches = len(train_loader)
         for k in epoch_losses:
