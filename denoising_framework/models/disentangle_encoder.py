@@ -23,9 +23,16 @@ class DisentangleEncoder(nn.Module):
             nn.ReLU(inplace=True)
         )
 
-        # Dedicated heads for content and noise projection
-        self.content_head = nn.Conv2d(total_dim, content_dim, kernel_size=3, padding=1)
-        self.noise_head = nn.Conv2d(total_dim, noise_dim, kernel_size=3, padding=1)
+        # Dedicated heads for content and noise projection with strict [-1, 1] bounds
+        self.content_head = nn.Sequential(
+            nn.Conv2d(total_dim, content_dim, kernel_size=3, padding=1),
+            nn.Tanh()  # Locks latent values strictly between -1.0 and 1.0
+        )
+        
+        self.noise_head = nn.Sequential(
+            nn.Conv2d(total_dim, noise_dim, kernel_size=3, padding=1),
+            nn.Tanh()  # Locks latent values strictly between -1.0 and 1.0
+        )
 
     def forward(self, x):
         features = self.backbone(x)

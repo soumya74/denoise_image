@@ -55,84 +55,110 @@ def main():
     indices = torch.randperm(num_items).tolist()
     train_indices, test_indices = indices[:train_size], indices[train_size:]
 
-    train_loader = DataLoader(Subset(full_train_ds, train_indices), batch_size=cfg.training.batch_size, shuffle=True, num_workers=cfg.training.num_workers)
-    test_loader = DataLoader(Subset(full_test_ds, test_indices), batch_size=1, shuffle=False)
+    train_loader = DataLoader(
+        Subset(full_train_ds, train_indices),
+        batch_size=cfg.training.batch_size,
+        shuffle=True,
+        num_workers=cfg.training.num_workers
+    )
+    test_loader = DataLoader(
+        Subset(full_test_ds, test_indices),
+        batch_size=1,
+        shuffle=False
+    )
 
     l1_loss = nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
-
     w = cfg.loss_weights
-    history_total_loss, history_test_psnr = [], []
+
+    # History Trackers for all 7 individual losses + Total Loss + PSNR
+    history = {
+        "total": [],
+        "clean_rec": [],
+        "clean_self": [],
+        "clean_cross": [],
+        "noisy_rec": [],
+        "noise_rec": [],
+        "latent": [],
+        "noise_zero": [],
+        "val_psnr": []
+    }
 
     epochs = cfg.training.epochs
     for epoch in range(1, epochs + 1):
         model.train()
         epoch_losses = {
-            "total": 0.0, "clean_rec": 0.0, "noisy_rec": 0.0, 
-            "noise_rec": 0.0, "clean_self": 0.0, "latent": 0.0, "noise_zero": 0.0
+            "total": 0.0,
+            "clean_rec": 0.0,
+            "clean_self": 0.0,
+            "clean_cross": 0.0,
+            "noisy_rec": 0.0,
+            "noise_rec": 0.0,
+            "latent": 0.0,
+            "noise_zero": 0.0
         }
 
         for noisy, clean in train_loader:
             noisy, clean = noisy.to(device), clean.to(device)
-            # Calculate explicit ground truth noise: n = y - x
             gt_noise = noisy - clean
 
             optimizer.zero_grad()
             res = model(noisy_img=noisy, clean_img=clean)
 
-            # --- THE 6 DISENTANGLEMENT LOSS FUNCTIONS ---
             # 1. Clean Reconstruction Loss: ||x_hat - x||_1
             l_clean_rec = l1_loss(res["x_hat"], clean)
 
-            # 2. Noisy Image Reconstruction Loss: ||y_hat - y||_1 where y_hat = x_hat + n_hat
-            l_noisy_rec = l1_loss(res["y_hat"], noisy)
-
-            # 3. Explicit Noise Reconstruction Loss: ||n_hat - n||_1
-            l_noise_rec = l1_loss(res["n_hat"], gt_noise)
-
-            # 4. Clean Identity Reconstruction Loss: ||x_hat_clean - x||_1
+            # 2. Clean Self-Reconstruction Loss: ||x_hat_clean - x||_1
             l_clean_self = l1_loss(res["x_hat_clean"], clean)
 
-            # 5. Latent Content Consistency Loss: ||z_c^y - z_c^x||_1
-            l_content_latent = l1_loss(res["z_c_y"], res["z_c_x"])
+            # 3. Cross-Reconstruction Consistency Loss: ||x_hat - x_hat_clean||_1
+            l_clean_cross = l1_loss(res["x_hat"], res["x_hat_clean"].detach())
 
-            # 6. Clean Latent Noise Suppression Loss: ||z_n^x||_1 (Forces 4-D noise latent to zero for clean images)
+            # 4. Noisy Image Reconstruction Loss: ||y_hat - y||_1
+            l_noisy_rec = l1_loss(res["y_hat"], noisy)
+
+            # 5. Explicit Noise Reconstruction Loss: ||n_hat - n||_1
+            l_noise_rec = l1_loss(res["n_hat"], gt_noise)
+
+            # 6. Latent Content Consistency Loss: ||z_c^y - z_c^x||_1
+            l_content_latent = l1_loss(res["z_c_y"], res["z_c_x"].detach())
+
+            # 7. Clean Latent Noise Suppression Loss: ||z_n^x||_1 -> 0
             l_noise_zero = torch.mean(torch.abs(res["z_n_x"]))
 
-            # Total Weighted Objective
             total_loss = (
                 w.clean_rec * l_clean_rec +
+                w.clean_self * l_clean_self +
+                getattr(w, "clean_cross", 1.0) * l_clean_cross +
                 w.noisy_rec * l_noisy_rec +
                 w.noise_rec * l_noise_rec +
-                w.clean_self * l_clean_self +
                 w.content_latent * l_content_latent +
-                w.noise_zero * l_noise_zero
-            )
-
-            total_loss = (
-                w.clean_rec * l_clean_rec +
-                w.noisy_rec * l_noisy_rec +
-                w.noise_rec * l_noise_rec +
-                w.clean_self * l_clean_self +
-                w.content_latent * l_content_latent
+                getattr(w, "noise_zero", 1.0) * l_noise_zero
             )
 
             total_loss.backward()
+            
+            # --- THE EXPLOSION SHIELD ---
+            # Prevents gradients from exceeding a safe magnitude (1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
             optimizer.step()
 
             epoch_losses["total"] += total_loss.item()
             epoch_losses["clean_rec"] += l_clean_rec.item()
+            epoch_losses["clean_self"] += l_clean_self.item()
+            epoch_losses["clean_cross"] += l_clean_cross.item()
             epoch_losses["noisy_rec"] += l_noisy_rec.item()
             epoch_losses["noise_rec"] += l_noise_rec.item()
-            epoch_losses["clean_self"] += l_clean_self.item()
             epoch_losses["latent"] += l_content_latent.item()
             epoch_losses["noise_zero"] += l_noise_zero.item()
 
         n_batches = len(train_loader)
         for k in epoch_losses:
             epoch_losses[k] /= n_batches
+            history[k].append(epoch_losses[k])
 
-        # Evaluate PSNR
+        # Validation PSNR Evaluation
         model.eval()
         total_psnr = 0.0
         with torch.no_grad():
@@ -142,36 +168,53 @@ def main():
                 denoised = torch.clamp(model.decode_clean(z_c), 0.0, 1.0)
                 total_psnr += calculate_psnr(denoised, test_clean)
         val_psnr = total_psnr / len(test_loader)
-
-        history_total_loss.append(epoch_losses["total"])
-        history_test_psnr.append(val_psnr)
+        history["val_psnr"].append(val_psnr)
 
         print(
-            f"Epoch [{epoch}/{epochs}] | Loss: {epoch_losses['total']:.4f} | "
-            f"CleanRec: {epoch_losses['clean_rec']:.4f}, NoisyRec: {epoch_losses['noisy_rec']:.4f}, "
-            f"NoiseRec: {epoch_losses['noise_rec']:.4f}, SelfRec: {epoch_losses['clean_self']:.4f}, "
-            f"Latent: {epoch_losses['latent']:.4f} | Val PSNR: {val_psnr:.2f} dB"
+            f"Epoch [{epoch:02d}/{epochs:02d}] | Total: {epoch_losses['total']:.4f} | "
+            f"CleanRec: {epoch_losses['clean_rec']:.4f}, SelfClean: {epoch_losses['clean_self']:.4f}, "
+            f"CrossClean: {epoch_losses['clean_cross']:.4f}, NoisyRec: {epoch_losses['noisy_rec']:.4f}, "
+            f"NoiseRec: {epoch_losses['noise_rec']:.4f}, Latent: {epoch_losses['latent']:.4f}, "
+            f"NoiseZero: {epoch_losses['noise_zero']:.4f} | PSNR: {val_psnr:.2f} dB"
         )
 
-    # Save weights
+    # Save Checkpoint
     save_path = os.path.join(cfg.experiment.output_dir, f"final_{cfg.model.name}.pth")
     torch.save(model.state_dict(), save_path)
-    print(f"--> Saved checkpoint to: {save_path}")
+    print(f"--> [Model] Saved checkpoint to: {save_path}")
 
-    # Plot Curves
-    plt.figure(figsize=(12, 5))
-    plt.suptitle(f"Disentanglement Network Training Summary", fontsize=14, fontweight='bold')
-    plt.subplot(1, 2, 1)
-    plt.plot(range(1, epochs + 1), history_total_loss, marker='o', label='Total Weighted Loss')
-    plt.xlabel('Epochs'); plt.ylabel('Loss'); plt.title('Training Loss'); plt.grid(True); plt.legend()
+    # Plot Diagnostics in a 3x3 Subplot Grid
+    plt.figure(figsize=(18, 14))
+    plt.suptitle(f"Disentanglement Training Diagnostics: 7 Losses & PSNR ({cfg.experiment.name})", fontsize=16, fontweight='bold')
+    epoch_axis = range(1, epochs + 1)
 
-    plt.subplot(1, 2, 2)
-    plt.plot(range(1, epochs + 1), history_test_psnr, marker='^', color='green', label='Test PSNR')
-    plt.xlabel('Epochs'); plt.ylabel('PSNR (dB)'); plt.title('Validation PSNR (dB)'); plt.grid(True); plt.legend()
+    loss_plots = [
+        ("Clean Rec: ||x̂ - x||₁", history["clean_rec"], "tab:blue"),
+        ("Clean Self: ||x̂_clean - x||₁", history["clean_self"], "tab:purple"),
+        ("Clean Cross: ||x̂ - x̂_clean||₁", history["clean_cross"], "tab:cyan"),
+        ("Noisy Rec: ||ŷ - y||₁", history["noisy_rec"], "tab:orange"),
+        ("Noise Rec: ||n̂ - n||₁", history["noise_rec"], "tab:red"),
+        ("Noise Zero: ||z_n^x||₁ → 0", history["noise_zero"], "tab:pink"),
+        ("Latent Content: ||z_c^y - z_c^x||₁", history["latent"], "tab:brown"),
+        ("Total Weighted Loss", history["total"], "black"),
+        ("Validation PSNR (dB)", history["val_psnr"], "tab:green")
+    ]
 
-    plot_path = os.path.join(cfg.experiment.output_dir, "training_curves_disentangle.png")
-    plt.savefig(plot_path)
-    print(f"--> Saved curves to: {plot_path}")
+    for idx, (title, data, color) in enumerate(loss_plots, 1):
+        plt.subplot(3, 3, idx)
+        marker = '^' if "PSNR" in title else 'o'
+        plt.plot(epoch_axis, data, marker=marker, color=color, linewidth=1.8, label=title.split(":")[0])
+        plt.xlabel("Epochs", fontsize=10)
+        plt.ylabel("Value", fontsize=10)
+        plt.title(title, fontsize=11, fontweight='semibold')
+        plt.grid(True, linestyle="--", alpha=0.6)
+        plt.legend(loc="best", fontsize=9)
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.96])
+
+    plot_path = os.path.join(cfg.experiment.output_dir, "training_losses_disentangle.png")
+    plt.savefig(plot_path, dpi=200)
+    print(f"--> [Plot] Saved complete 3x3 diagnostics plot to: {plot_path}")
 
 if __name__ == "__main__":
     main()

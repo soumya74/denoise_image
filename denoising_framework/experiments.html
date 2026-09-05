@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disentanglement Network Debugging Report</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        h1 {
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            margin-top: 40px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 20px auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .meta-info {
+            background: #eef2f5;
+            padding: 15px;
+            border-left: 4px solid #3498db;
+            margin-bottom: 30px;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        .highlight {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Network Debugging & Optimization Report</h1>
+    
+    <div class="meta-info">
+        <strong>Architecture:</strong> Disentangled Dual-Decoder Denoising Network<br>
+        <strong>Objective:</strong> Isolate noise into a 4-D embedding space for deterministic inference subtraction (y - n_hat).
+    </div>
+
+    <h2>Phase 1: The Scale Disparity & The Illusion of Small Numbers</h2>
+    
+    <h3>Diagnosis</h3>
+    <p>Initial training showed the main reconstruction losses converging smoothly, but the <strong>Latent Content Consistency Loss</strong> was actively increasing.</p>
+    <ul>
+        <li><strong>Gradient Swamping:</strong> The pixel-level losses operated in the 0.10 to 0.40 range, while the latent loss operated in the 10⁻⁴ range. The Adam optimizer ignored the latent alignment because it was mathematically insignificant compared to the image reconstruction errors.</li>
+        <li><strong>Unbounded Feature Growth:</strong> Without normalization in the encoder, the raw numerical values of the latent embeddings inflated epoch-over-epoch to achieve better contrast, causing the absolute L1 distance to rise even if structural alignment was improving.</li>
+    </ul>
+
+    <h3>The Fix</h3>
+    <p>Introduced a <strong>Cross-Reconstruction Consistency Loss</strong>. By penalizing the difference between Clean Decoder outputs in the normalized RGB space, we translated the latent mismatch into a pixel-scale penalty that the optimizer could not ignore.</p>
+    
+    <img src="image_c99d1c.png" alt="Phase 1 Graph - Increasing Latent Content Loss">
+
+    <h2>Phase 2: The "Lazy" Decoder & Teacher-Student Dynamics</h2>
+    
+    <h3>Diagnosis</h3>
+    <p>Despite increasing the loss weights for the latent and cross-consistency constraints (to 1.6x), both metrics continued to rise.</p>
+    <ul>
+        <li><strong>The Shock Absorber Effect:</strong> The Clean Decoder was too deep and powerful. It learned to ignore the noise leaking into the 28-D embedding and output a perfect clean image anyway. This "lazy" shortcut bypassed the goal of strict disentanglement in the encoder.</li>
+        <li><strong>Moving Targets:</strong> By pulling both embeddings toward each other, the noisy path was actively corrupting the clean path's embedding.</li>
+    </ul>
+
+    <h3>The Fix</h3>
+    <ol>
+        <li><strong>Stop-Gradient (<code>.detach()</code>):</strong> Modified the loss functions to freeze the clean path during backward propagation. This turned the clean embedding into a strict "Teacher" and forced the noisy embedding ("Student") to match it.</li>
+        <li><strong>Architectural Crippling:</strong> Severely reduced the capacity of the Clean Decoder (down to 3 shallow layers ending in a <code>Sigmoid</code>) so it could no longer hide the encoder's mistakes.</li>
+        <li><strong>Inference Prioritization:</strong> Deepened the Noise Decoder to 64 channels and massively shifted loss weights to prioritize the 4-D noise extraction needed for inference.</li>
+    </ol>
+
+    <img src="image_0bf7e9.png" alt="Phase 2 Graph - Diagnostics showing rising cross loss">
+    <img src="image_0bfa91.png" alt="Phase 2 YAML Config - Adjusted loss weights">
+
+    <h2>Phase 3: Catastrophic Gradient Explosion & Mode Collapse</h2>
+    
+    <h3>Diagnosis</h3>
+    <p>The network completely collapsed. The Latent Content difference exploded past 600, Clean Cross dropped to exactly 0.000, and PSNR flatlined at ~5 dB.</p>
+    <ul>
+        <li><strong>The Cause:</strong> We applied "hard constraints" (architectural bounds) and "soft constraints" (15x loss multipliers) simultaneously. This caused the gradients to explode.</li>
+        <li><strong>Mode Collapse:</strong> The exploded latent values hit the new <code>Sigmoid</code> layer in the shallow Clean Decoder, instantly saturating the outputs to solid white/black squares. Because the outputs were identical blank squares, the Cross Loss dropped to zero, and the PSNR crashed.</li>
+    </ul>
+
+    <h3>The Fix</h3>
+    <ol>
+        <li><strong>Weight Reset:</strong> Reverted the massively inflated loss weights back to a stable 1.0–2.0 range, relying entirely on the architectural <code>.detach()</code> constraints to enforce alignment.</li>
+        <li><strong>Gradient Clipping:</strong> Added an "explosion shield" to the training loop: <code>torch.nn.utils.clip_grad_norm_</code>.</li>
+        <li><strong>Latent Bounding (The Final Key):</strong> To prevent unbounded feature growth without using statistically unstable Batch Normalization, we wrapped the Encoder's output heads in <code>nn.Tanh()</code>. This strictly locked all latent values between [-1.0, 1.0].</li>
+    </ol>
+
+    <img src="image_460f9c.png" alt="Phase 3 Graph - Immediate Gradient Explosion">
+    <img src="image_461ee2.png" alt="Phase 3 Graph - Delayed Saturation Collapse">
+
+    <h2>Phase 4: Stable Pareto Optimal Front & Inference Readiness</h2>
+    
+    <h3>Diagnosis</h3>
+    <p>The architecture and training pipeline reached a stable mathematical equilibrium.</p>
+    <ul>
+        <li><strong>Latent Convergence:</strong> Thanks to <code>.detach()</code> and <code>Tanh()</code>, the Latent Content loss spiked initially and then steadily drove downwards, proving the noisy embedding was successfully cloning the clean embedding.</li>
+        <li><strong>Noise Prioritization:</strong> The Noise Reconstruction loss settled at a highly accurate minimum (~0.015), validating that the 4-D noise head is primed for deterministic inference subtraction.</li>
+        <li><strong>The Clean Cross Illusion:</strong> Clean Cross initially rose from zero. Early on, the decoder outputs "gray sludge" (zero variance). As it learns to draw sharp edges, it becomes hyper-sensitive to sub-pixel latent variances. The curve safely plateaued at an L1 difference of 0.002 (less than 1/255 pixel values), indicating imperceptible output variance while maintaining an 18 dB PSNR.</li>
+    </ul>
+
+    <img src="image_50057b.png" alt="Phase 4 Graph - Stable Convergence">
+
+    <h2>Next Steps (Optimization)</h2>
+    <p>To refine the current checkpoint from "stable" to "highly optimized":</p>
+    <ol>
+        <li><strong>Cure "Minimum Bouncing":</strong> Increase the batch size (from 16 to 32 or 64) to smooth out the gradient spikes seen in the final 15 epochs.</li>
+        <li><strong>Capture Trajectory Momentum:</strong> Extend training from 40 epochs to 150 epochs.</li>
+        <li><strong>Learning Rate Scheduler:</strong> Implement <code>StepLR</code> (e.g., halving the learning rate every 50 epochs) to allow the optimizer to settle into the absolute lowest loss valleys.</li>
+    </ol>
+</div>
+
+</body>
+</html>

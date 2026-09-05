@@ -16,18 +16,19 @@ dataset:
   test_split: 0.1
 
 training:
-  epochs: 20
-  batch_size: 16
+  epochs: 100
+  batch_size: 32
   learning_rate: 0.0005
   num_workers: 0
 
 loss_weights:
-  clean_rec: 1.0       # L_clean-rec
-  noisy_rec: 1.0       # L_noisy-rec
-  noise_rec: 1.0       # L_noise-rec
-  clean_self: 1.0      # L_clean-self
-  content_latent: 0.5  # L_content-latent
-  noise_zero: 1.0      # L_noise-zero (forces z_n^x to 0 for clean images)
+  clean_rec: 1.0       
+  noisy_rec: 1.0       
+  noise_rec: 2.0       # Slight bump to prioritize noise, but not 15x!
+  clean_self: 1.0      
+  content_latent: 1.0  # .detach() handles the alignment safely now
+  noise_zero: 1.0      
+  clean_cross: 1.0
 
 hardware:
   device: "auto"
